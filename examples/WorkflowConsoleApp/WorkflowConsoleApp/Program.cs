@@ -9,8 +9,8 @@ namespace WorkflowConsoleApp
     {
         static void Main(string[] args)
         {
-            var p = new Process(File.OpenRead("flow.bpmn"));
-            var processInstance = p.NewProcessInstance();
+            var p = new ProcessModel(File.OpenRead("flow.bpmn"));
+            var processInstance = p.ProcessInstance();
             processInstance.SetDefaultHandlers();
             processInstance.SetHandler("task", new MyTaskHandler());
             processInstance.SetHandler("startEvent", new MyStartHandler());

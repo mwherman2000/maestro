@@ -1,9 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25123.0
+# Visual Studio 15
+VisualStudioVersion = 15.0.27428.2043
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Maestro", "Maestro\Maestro.csproj", "{5053702C-BBF8-479B-A712-EB738533B5DD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Test1", "Test1\Test1.csproj", "{3C979B89-8944-4821-88A0-EECCD9664710}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WorkflowConsoleApp", "examples\WorkflowConsoleApp\WorkflowConsoleApp\WorkflowConsoleApp.csproj", "{63505689-DA21-428B-86E1-17740C1C9FE3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,8 +19,19 @@ Global
 		{5053702C-BBF8-479B-A712-EB738533B5DD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5053702C-BBF8-479B-A712-EB738533B5DD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5053702C-BBF8-479B-A712-EB738533B5DD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C979B89-8944-4821-88A0-EECCD9664710}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C979B89-8944-4821-88A0-EECCD9664710}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C979B89-8944-4821-88A0-EECCD9664710}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C979B89-8944-4821-88A0-EECCD9664710}.Release|Any CPU.Build.0 = Release|Any CPU
+		{63505689-DA21-428B-86E1-17740C1C9FE3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{63505689-DA21-428B-86E1-17740C1C9FE3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{63505689-DA21-428B-86E1-17740C1C9FE3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{63505689-DA21-428B-86E1-17740C1C9FE3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {347878EF-B078-4C8B-86C8-60D971DCD419}
 	EndGlobalSection
 EndGlobal

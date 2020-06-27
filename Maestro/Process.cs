@@ -10,16 +10,16 @@ using t = System.Threading.Tasks;
 
 namespace Maestro
 {
-    public class Process
+    public class ProcessModel
     {
         internal IEnumerable<Property> Properties { get; set; }
         public XElement ProcessXML { get; set; }
         public XNamespace NS { get; set; }
-        private Process()
+        private ProcessModel()
         {
         }
 
-        public Process(Stream bpmnStream)
+        public ProcessModel(Stream bpmnStream)
         {
             XDocument doc = XDocument.Load(bpmnStream);
             NS = @"http://www.omg.org/spec/BPMN/20100524/MODEL";
@@ -27,15 +27,17 @@ namespace Maestro
             Properties = PropertyInitializer(ProcessXML, NS);
         }
 
-        public ProcessInstance NewProcessInstance()
+        public ProcessInstance ProcessInstance()
         {
-            var current = ProcessXML.Element(NS + "startEvent");
-            var node = new ProcessNode(current.Attribute("id").Value, current.Name.LocalName);
+            var elementStartEvent = ProcessXML.Element(NS + "startEvent");
+            //var nodeStart = new ProcessNode(current.Attribute("id").Value, current.Name.LocalName);
             var nodes = BuildNodes(ProcessXML);
+            var nodeStart = nodes[elementStartEvent.Attribute("id").Value];
             var processInstance = new ProcessInstance(this);
-            BuildLinkedNodes(current, ref node, nodes, processInstance);
+            //BuildLinkedNodes0(current, ref nodeStart, nodes, processInstance);
+            BuildLinkedNodes1(ProcessXML, nodes, processInstance);
             processInstance.Id = Guid.NewGuid().ToString();
-            processInstance.StartNode = node;
+            processInstance.StartNode = nodeStart;
             processInstance.Nodes = nodes.ToImmutableDictionary();
 
             return processInstance;
@@ -43,7 +45,77 @@ namespace Maestro
 
         private IDictionary<string, ProcessNode> BuildNodes(XElement processXML)
         {
-            var nodes = processXML.Elements().ToDictionary(e => e.Attribute("id").Value, e => new ProcessNode(e.Attribute("id").Value, e.Name.LocalName));
+            //var nodes = processXML.Elements().ToDictionary(e => e.Attribute("id").Value, e => new ProcessNode(e.Attribute("id").Value, e.Name.LocalName));
+            var nodes = new Dictionary<string, ProcessNode>();
+            var elements = processXML.Elements();
+            Console.WriteLine("elements.Count:\t" + elements.Count().ToString());
+            foreach(var element in elements)
+            {
+                //Console.WriteLine(element.Name + " " + element.Name.LocalName + " " + element.Value);
+                //var attrs = element.Attributes();
+                //foreach(var attr in attrs)
+                //{
+                //    Console.WriteLine(attr.Name + " " + attr.Value);
+                //}
+                string name = element.Name.LocalName;
+                switch(name)
+                {
+                    case "sequenceFlow":
+                        {
+                            string targetRef = (element.Attribute("targetRef") != null ? element.Attribute("targetRef").Value : "(null)");
+                            Console.WriteLine("SEQ  Supported: " + name + "\t" + element.Attribute("id").Value + "\t" + targetRef);
+                            ProcessNode pn = new ProcessNode(element.Attribute("id").Value, name);
+                            nodes.Add(element.Attribute("id").Value, pn);
+                            break;
+                        }
+                    case "startEvent":
+                    case "endEvent":
+                    case "task":
+                    case "userTask":
+                    case "serviceTask":
+                    case "scriptTask":
+                    case "businessRuleTask":
+                    case "scriptRuleTask":
+                        {
+                            string targetRef = (element.Attribute("targetRef") != null ? element.Attribute("targetRef").Value : "(null)");
+                            Console.WriteLine("TASK Supported: " + name + "\t" + element.Attribute("id").Value + "\t" + targetRef);
+                            ProcessNode pn = new ProcessNode(element.Attribute("id").Value, name);
+                            nodes.Add(element.Attribute("id").Value, pn);
+                            break;
+                        }
+                    case "exclusiveGateway":
+                    case "inclusiveGateway":
+                        {
+                            string targetRef = (element.Attribute("targetRef") != null ? element.Attribute("targetRef").Value : "(null)");
+                            Console.WriteLine("GATE Supported: " + name + "\t" + element.Attribute("id").Value + "\t" + targetRef);
+                            ProcessNode pn = new ProcessNode(element.Attribute("id").Value, name);
+                            nodes.Add(element.Attribute("id").Value, pn);
+                            break;
+                        }
+                    case "property":
+                    case "dataAssociation":
+                    case "extensionElements":
+                    case "participant":
+                    case "laneSet":
+                    case "messageFlow":
+                    case "parallelGateway":
+                    case "subProcess":
+                    case "callActivity":
+                    case "DataObject":
+                    case "TextAnnotation":
+                    case "assocation":
+                    case "dataStoreReference":
+                        {
+                            Console.WriteLine("Not supported: " + element.Name);
+                            break;
+                        }
+                    default:
+                        {
+                            Console.WriteLine("Unknown: " + element.Name);
+                            break;
+                        }
+                }
+            }
             nodes.Where(e => e.Value.NodeType == "property").Select(e => e.Key).ToList().ForEach(k => nodes.Remove(k));
             var scripts = processXML.Elements().Elements(NS + "script")
                 .Select(s => new { id = s.Parent.Attribute("id").Value, expression = s.Value });
@@ -70,20 +142,72 @@ namespace Maestro
             (s, ProcessXML) => ProcessXML.Elements()
             .Where(e => e.Attribute("id").Value == s.Attribute("targetRef")?.Value);
 
-        private void BuildLinkedNodes(XElement current, ref ProcessNode node, IDictionary<string, ProcessNode> nodes, ProcessInstance processInstance)
+        private void BuildLinkedNodes0(XElement elementCurrent, ref ProcessNode nodeCurrent, IDictionary<string, ProcessNode> nodes, ProcessInstance processInstance)
         {
-            node.ProcessInstance = processInstance;
-            var seq = NextSequences(current, ProcessXML, NS);
-            var next = (seq.Any() ? seq : NextElement(current, ProcessXML));
-            node.NextNodes = new List<ProcessNode>();
+            Console.WriteLine("nodeCurrent: " + nodeCurrent.NodeName + " " + nodeCurrent.NodeType);
+            nodeCurrent.ProcessInstance = processInstance;
+            var seq = NextSequences(elementCurrent, ProcessXML, NS);
+            var nextElements = (seq.Any() ? seq : NextElement(elementCurrent, ProcessXML));
+            nodeCurrent.NextNodes = new List<ProcessNode>();
             
-            foreach (var n in next)
+            foreach (var elementNext in nextElements)
             {
-                var nextNode = nodes[n.Attribute("id").Value];
+                Console.WriteLine("n: " + elementNext.Attribute("id").Value + " " + elementNext.Name.LocalName);
+
+                var nextNode = nodes[elementNext.Attribute("id").Value];
+                nodeCurrent.NextNodes.Add(nextNode);
+
                 if (nextNode.PreviousNodes == null) nextNode.PreviousNodes = new List<ProcessNode>();
-                if (!nextNode.PreviousNodes.Contains(node)) nextNode.PreviousNodes.Add(node);
-                node.NextNodes.Add(nextNode);
-                BuildLinkedNodes(n, ref nextNode, nodes, processInstance);
+                if (!nextNode.PreviousNodes.Contains(nodeCurrent)) nextNode.PreviousNodes.Add(nodeCurrent);
+
+                BuildLinkedNodes0(elementNext, ref nextNode, nodes, processInstance);
+            }
+        }
+
+        private void BuildLinkedNodes1(XElement ProcessXML, IDictionary<string, ProcessNode> nodes, ProcessInstance processInstance)
+        {
+            var elements = ProcessXML.Elements();
+            Console.WriteLine("elements.Count:\t" + elements.Count().ToString());
+            foreach (var element in elements)
+            {
+                string name = element.Name.LocalName;
+                switch (name)
+                {
+                    case "sequenceFlow":
+                        {
+                            string targetRef = (element.Attribute("targetRef") != null ? element.Attribute("targetRef").Value : "");
+                            string sourceRef = (element.Attribute("sourceRef") != null ? element.Attribute("sourceRef").Value : "");
+
+                            Console.WriteLine("SEQ  References: " + name + "\t" + element.Attribute("id").Value + "\t" + sourceRef + "\t" + targetRef);
+
+                            var currentNode = nodes[element.Attribute("id").Value];
+                            var sourceNode = nodes[sourceRef];
+                            var targetNode = nodes[targetRef];
+
+                            if (currentNode.PreviousNodes == null) currentNode.PreviousNodes = new List<ProcessNode>();
+                            if (currentNode.NextNodes == null) currentNode.NextNodes = new List<ProcessNode>();
+                            if (!currentNode.PreviousNodes.Contains(sourceNode)) currentNode.PreviousNodes.Add(sourceNode);
+                            if (!currentNode.NextNodes.Contains(targetNode)) currentNode.NextNodes.Add(targetNode);
+
+                            if (sourceNode.NextNodes == null) sourceNode.NextNodes = new List<ProcessNode>();
+                            if (!sourceNode.NextNodes.Contains(currentNode)) sourceNode.NextNodes.Add(currentNode);
+
+                            if (targetNode.PreviousNodes == null) targetNode.PreviousNodes = new List<ProcessNode>();
+                            if (!targetNode.PreviousNodes.Contains(currentNode)) targetNode.PreviousNodes.Add(currentNode);
+
+                            break;
+                        }
+                    default:
+                        {
+                            break;
+                        }
+                }
+            }
+
+            foreach (ProcessNode pn in nodes.Values)
+            {
+                Console.WriteLine("pn.ProcessInstance: " + pn.NodeName);
+                pn.ProcessInstance = processInstance;
             }
         }
 
@@ -145,7 +269,7 @@ namespace Maestro
     public class ProcessInstance
     {
         public string Id { get; set; }
-        public Process Process { get; }
+        public ProcessModel Process { get; }
         private IImmutableDictionary<string, object> inputParameters;
         public IImmutableDictionary<string, object> InputParameters
         {
@@ -182,9 +306,163 @@ namespace Maestro
             }
         }
 
-        public ProcessInstance(Process process)
+        public ProcessInstance(ProcessModel process)
         {
             Process = process;
+        }
+
+        public List<string> NodeTypes = new List<string>();
+        public void Serialize1ProcessTemplate()
+        {
+            List<string> keys = new List<string>();
+            int[] ids = new int[this.Nodes.Count + 1];
+            foreach (string k in this.Nodes.Keys) keys.Add(k);
+            int nIDs = 0;
+            foreach (string k in this.Nodes.Keys) ids[this.Nodes[k].NodeSerialNumber] = nIDs++;
+
+            foreach (string k in this.Nodes.Keys)
+            {
+                ProcessNode n = this.Nodes[k];
+                if (!NodeTypes.Contains(n.NodeType)) NodeTypes.Add(n.NodeType);
+                n.NodeTypeSerialNumber = NodeTypes.IndexOf(n.NodeType);
+            }
+
+            Console.WriteLine("NodeTypes:\t[" + NodeTypes.Count.ToString() + "]");
+            foreach (string t in NodeTypes)
+            {
+                Console.WriteLine("[" + NodeTypes.IndexOf(t) + "]"
+                    + "\t" + "[" + t + "]"
+                );
+            }
+
+            Console.WriteLine("NodeNames:\t[" + this.Nodes.Count.ToString() + "]");
+            for (int i = 1; i <= this.Nodes.Count; i++)
+            {
+                int id = ids[i];
+                string k = keys[id];
+                ProcessNode n = this.Nodes[k];
+                Console.WriteLine("[" + n.NodeSerialNumber.ToString() + "]"
+                    + "\t" + "[" + n.NodeName + "]"
+                );
+            }
+
+            Console.WriteLine("NodeCodeGraph:\t[" + this.Nodes.Count.ToString() + "]");
+            for (int i = 1; i <= this.Nodes.Count; i++)
+            {
+                int id = ids[i];
+                string k = keys[id];
+                ProcessNode n = this.Nodes[k];
+                Console.Write("[" + n.NodeSerialNumber.ToString() + "]"
+                    + "\t" + "[" + n.NodeTypeSerialNumber.ToString() + "]"
+                );
+                Console.Write(",");
+                Console.Write("[");
+                if (n.PreviousNodes != null)
+                {
+                    bool firstItem2 = true;
+                    foreach (ProcessNode pn in n.PreviousNodes)
+                    {
+                        if (!firstItem2) Console.Write(","); firstItem2 = false;
+                        Console.Write(pn.NodeSerialNumber.ToString());
+                    }
+                }
+                Console.Write("]");
+                Console.Write(",");
+                Console.Write("[");
+                if (n.NextNodes != null)
+                {
+                    bool firstItem2 = true;
+                    foreach (ProcessNode nn in n.NextNodes)
+                    {
+                        if (!firstItem2) Console.Write(","); firstItem2 = false;
+                        Console.Write(nn.NodeSerialNumber.ToString());
+                    }
+                }
+                Console.Write("]");
+                Console.WriteLine();
+            }
+
+            Console.WriteLine("NodeIEO:\t[" + this.Nodes.Count.ToString() + "]");
+            for (int i = 1; i <= this.Nodes.Count; i++)
+            {
+                int id = ids[i];
+                string k = keys[id];
+                ProcessNode n = this.Nodes[k];
+                //fConsole.Write("Node,IEO: ");
+                Console.Write("[" + n.NodeSerialNumber.ToString() + "]"
+                );
+                Console.Write(",");
+                Serialize1IOParameters(n.InputParameters);
+                Console.Write(",");
+                Serialize1Expression(n.Expression);
+                Console.Write(",");
+                Serialize1IOParameters(n.OutputParameters);
+                Console.WriteLine();
+            }
+        }
+
+        public void Serialize1ProcessInstance()
+        {
+
+            Console.WriteLine("ProcessInstance:START");
+            Console.WriteLine("[" + this.Id + "]"
+                );
+
+            Console.WriteLine("ProcessInstanceIEO:");
+            Serialize1IOParameters(this.InputParameters);
+            Console.Write(",");
+            Console.Write("[");
+            bool firstItem = true;
+            if (this.OutputParameters != null) foreach(var op in this.OutputParameters)
+            {
+                if (!firstItem) Console.Write(","); firstItem = false;
+                Serialize1IOParameters(op.Value);
+            }
+            Console.Write("]");
+            Console.WriteLine();
+
+            Console.WriteLine("StartNode:");
+            Serialize1StartNode(this.StartNode);
+            Console.WriteLine();
+            Console.WriteLine("ProcessInstance:END");
+        }
+
+        public void Serialize1StartNode(ProcessNode nodeStart)
+        {
+            Console.WriteLine("[" + nodeStart.NodeSerialNumber.ToString() + "]"
+                    + "\t" + "[" + nodeStart.NodeName + "]"
+                    );
+            Console.Write("IO: ");
+            Serialize1IOParameters(nodeStart.InputParameters);
+            Console.Write(",");
+            Serialize1IOParameters(nodeStart.OutputParameters);
+        }
+
+        public void Serialize1Expression(string expression)
+        {
+            Console.Write("[");
+            if (expression != null) Console.Write(expression);
+            Console.Write("]");
+        }
+
+        public void Serialize1IOParameters(IImmutableDictionary<string, object> parameters)
+        {
+            Serialize1IOParameters(parameters, false);
+        }
+        public void Serialize1IOParameters(IImmutableDictionary<string, object> parameters, bool fNewline)
+        {
+            Console.Write("[");
+            if (parameters != null)
+            {
+                bool firstItem = true;
+                foreach (var p in parameters)
+                {
+                    if (!firstItem) Console.Write(","); firstItem = false;
+                    Console.Write(p.Key + "=" + p.Value.ToString());
+                }
+            }
+            Console.Write("]");
+            if (fNewline) Console.WriteLine();
         }
 
         public void Start()
@@ -199,6 +477,7 @@ namespace Maestro
                 { "startEvent", new DefaultStartHandler()},
                 { "endEvent", new DefaultEndHandler()},
                 { "task", new DefaultTaskHandler()},
+                { "userTask", new DefaultTaskHandler()}, // mwh
                 { "sequenceFlow", new DefaultSequenceHandler()},
                 { "businessRuleTask", new DefaultBusinessRuleHandler()},
                 { "exclusiveGateway", new DefaultExclusiveGatewayHandler()},
@@ -241,11 +520,11 @@ namespace Maestro
             return parameters.All(p => p.Value.GetType().Name.ToLower() == propertyMap[p.Key].ToLower());
         }
 
-        public void Start(IDictionary<string, object> parameters)
+        public void Start(IDictionary<string, object> processInstanceInputParameters)
         {
             //TODO Get node variables not process instance var
-            InputParameters = parameters.ToImmutableDictionary();
-            StartNode.InputParameters = parameters.ToImmutableDictionary();
+            InputParameters = processInstanceInputParameters.ToImmutableDictionary();
+            StartNode.InputParameters = processInstanceInputParameters.ToImmutableDictionary();
             Start();
         }
 
@@ -260,7 +539,6 @@ namespace Maestro
         }
     }
 
-
     public interface INodeHandler
     {
         void Execute(ProcessNode currentNode, ProcessNode previousNode);
@@ -268,6 +546,8 @@ namespace Maestro
 
     public class ProcessNode
     {
+        public int NodeSerialNumber { get; set; }
+        public int NodeTypeSerialNumber { get; set; }
         public string NodeName { get; set; }
         public string NodeType { get; set; }
         public ProcessInstance ProcessInstance { get; set; }
@@ -278,6 +558,8 @@ namespace Maestro
         public ICollection<ProcessNode> PreviousNodes { get; set; }
         private t.Task Task { get; set; }
         public string Expression { get; set; }
+
+        private static int nNodes = 0;
 
         public ProcessNode()
         {
@@ -290,6 +572,7 @@ namespace Maestro
 
         public ProcessNode(string name, string type)
         {
+            NodeSerialNumber = nNodes; nNodes++;
             NodeName = name;
             NodeType = type;
         }
@@ -301,16 +584,25 @@ namespace Maestro
             Task = new t.Task(() => NodeHandler.Execute(processNode, previousNode));
             Task.Start();
         }
+
         public void Done()
         {
-            foreach (var node in NextNodes)
+            if (NextNodes != null)
             {
-                //to replace with variable resolution
-                //for each node retrieve input parameters defined in BPMN
-                //retrieve from node.OutputParameters (results of previous node)
-                //retrieve missing necessary input from process variables
-                node.InputParameters = OutputParameters;
-                node.Execute(node, this);
+                int i = 0;
+                foreach (var nodeNext in NextNodes)
+                {
+                    Console.WriteLine($"Done: {this.NodeName} nodeNext.{i}: {nodeNext.NodeSerialNumber.ToString()}\t{nodeNext.NodeName}\t{nodeNext.NodeType}");
+                    //to replace with variable resolution
+                    //for each node retrieve input parameters defined in BPMN
+                    //retrieve from node.OutputParameters (results of previous node)
+                    //retrieve missing necessary input from process variables
+                    nodeNext.InputParameters = OutputParameters;
+                    Console.Write("I: ");
+                    nodeNext.ProcessInstance.Serialize1IOParameters(nodeNext.InputParameters, true);
+                    nodeNext.Execute(nodeNext, this);
+                    i++;
+                }
             }
         }
     }
@@ -319,7 +611,7 @@ namespace Maestro
     {
         void INodeHandler.Execute(ProcessNode processNode, ProcessNode previousNode)
         {
-            Console.WriteLine(processNode.NodeName + " Executing Task");
+            Console.WriteLine(processNode.NodeName + " Executing Task (default)");
             processNode.Done();
         }
     }
@@ -328,7 +620,7 @@ namespace Maestro
     {
         void INodeHandler.Execute(ProcessNode processNode, ProcessNode previousNode)
         {
-            Console.WriteLine(processNode.NodeName + " Executing Start");
+            Console.WriteLine(processNode.NodeName + " Executing Start (default)");
             processNode.Done();
         }
     }
@@ -337,7 +629,7 @@ namespace Maestro
     {
         void INodeHandler.Execute(ProcessNode processNode, ProcessNode previousNode)
         {
-            Console.WriteLine(processNode.NodeName);
+            Console.WriteLine(processNode.NodeName + " Executing Exclusive Gateway (default)");
             processNode.Done();
         }
     }
@@ -346,7 +638,7 @@ namespace Maestro
     {
         void INodeHandler.Execute(ProcessNode processNode, ProcessNode previousNode)
         {
-            Console.WriteLine(processNode.NodeName + " Executing BusinessRule");
+            Console.WriteLine(processNode.NodeName + " Executing BusinessRule (default)");
             processNode.Done();
         }
     }
@@ -355,12 +647,15 @@ namespace Maestro
     {
         void INodeHandler.Execute(ProcessNode processNode, ProcessNode previousNode)
         {
-            Console.WriteLine(processNode.NodeName + " Executing Sequence");
             bool result = true;
-            if (processNode.Expression != null)
+            if (processNode.Expression == null)
             {
-                Console.WriteLine(processNode.NodeName + " Conditional Sequence");
-                Console.WriteLine("Condition: " + processNode.Expression);
+                Console.WriteLine(processNode.NodeName + " Executing Sequence (default)");
+            }
+            else
+            {
+                Console.WriteLine(processNode.NodeName + " Executing Sequence (with Expression) (default)");
+                Console.WriteLine("Condition expression: " + processNode.Expression);
                 var globals = new Globals(processNode.InputParameters.ToDictionary(e => e.Key, e => e.Value));
                 try
                 {
@@ -384,7 +679,7 @@ namespace Maestro
     {
         void INodeHandler.Execute(ProcessNode processNode, ProcessNode previousNode)
         {
-            Console.WriteLine(processNode.NodeName + " Executing End");
+            Console.WriteLine(processNode.NodeName + " Executing End (default)");
             processNode.ProcessInstance.SetOutputParameters(processNode);
             processNode.Done();
         }
@@ -394,7 +689,7 @@ namespace Maestro
     {
         void INodeHandler.Execute(ProcessNode processNode, ProcessNode previousNode)
         {
-            Console.WriteLine(processNode.NodeName + " Executing Script");
+            Console.WriteLine(processNode.NodeName + " Executing Script (default)");
 
             if (processNode.Expression != null)
             {
@@ -430,7 +725,7 @@ namespace Maestro
 
         void INodeHandler.Execute(ProcessNode processNode, ProcessNode previousNode)
         {
-            Console.WriteLine(processNode.NodeName);
+            Console.WriteLine(processNode.NodeName + " Executing Inclusive Gateway (default)");
             sequenceWait.GetOrAdd(processNode, new List<ProcessNode>(processNode.PreviousNodes));
             lock (sequenceWait[processNode])
             {
